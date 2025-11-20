@@ -1,5 +1,6 @@
 {
   "name": "code-suggestions",
+  "publisher": "Ig",
   "displayName": "code-suggestions",
   "description": "suggestions for code",
   "version": "0.0.1",
@@ -57,11 +58,29 @@
       ]
     },
     "commands": [
-      {
-        "command": "codeSuggestions.removeContextFile",
-        "title": "$(trash) Remove File"
-      }
-    ]
+            {
+                "command": "codeSuggestions.triggerSuggestion",
+                "title": "Code Suggestions: Get AI Suggestion"
+            },
+            {
+                "command": "codeSuggestions.removeContextFile",
+                "title": "Code Suggestions: Remove Context File"
+            }
+        ],
+        "keybindings": [
+            {            
+                "command": "runCommands",
+                "key": "alt+.", 
+                "when": "editorTextFocus",
+                "args": {
+                    "commands": [                    
+                        "hideSuggestWidget", 
+                                            
+                        "codeSuggestions.triggerSuggestion"
+                    ]
+                }
+            }
+        ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
