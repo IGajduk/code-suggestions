@@ -38,51 +38,105 @@ const CURSOR_MARKER = "<|CURSOR|>"; // A unique token to mark the position
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('*** Extension "Code Suggestions" ACTIVATED! ***');
-
+function findDeepestSymbol(
+    symbols: vscode.DocumentSymbol[], 
+    position: vscode.Position
+): vscode.DocumentSymbol | undefined {
+    
+    for (const symbol of symbols) {
+        if (symbol.range.contains(position)) {
+            // If this symbol has children (e.g., Class has Methods), look deeper
+            if (symbol.children.length > 0) {
+                const child = findDeepestSymbol(symbol.children, position);
+                if (child) {
+                    return child;
+                }
+            }
+            // If no children contain the cursor, this symbol is the deepest one
+            return symbol;
+        }
+    }
+    return undefined;
+}
   // 1. Define the Inline Completion Provider
   const provider: vscode.InlineCompletionItemProvider = {
-    async provideInlineCompletionItems(document, position, context, token) {
-      
-      // 💥 CRITICAL CHECK: Only provide suggestions if manually invoked (by the command).
-      // If the triggerKind is 'Automatic', return an empty array to disable typing-based suggestions.
-      if (context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke) {
-          return []; 
-      }
-      
-      // 1. Collect all file contents
-      const currentFileContent = document.getText();
-      const offset = document.offsetAt(position); 
-      const line = document.lineAt(position);
-      const prefix = line.text.substring(0, position.character);
+   async provideInlineCompletionItems(document, position, context, token) {
+        if (context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke) {
+            return [];
+        }
 
-      const contextContents: { path: string, content: string }[] = [];
-      contextContents.push({ path: document.uri.fsPath, content: currentFileContent });
+        const fullText = document.getText();
+        const offset = document.offsetAt(position);
+        const line = document.lineAt(position);
+        const prefix = line.text.substring(0, position.character);
 
-      // 2. Combine all file contents into a single string (Plain Text)
-      let combinedContext = '';
-      for (const file of contextContents) {
-          const content = file.content;
-          
-          if (file.path === document.uri.fsPath) {
-              const contentWithCursor = content.substring(0, offset) + CURSOR_MARKER + content.substring(offset);
-              combinedContext += `${FILE_SEPARATOR}${file.path} ---\n${contentWithCursor}`;
-          } else {
-              combinedContext += `${FILE_SEPARATOR}${file.path} ---\n${content}`;
-          }
-      }
-      
-      // 3. Send the single string to the suggestion function
-      const suggestion = await getAISuggestion(combinedContext, prefix);
+        let promptContext = "";
 
-      if (!suggestion) return [];
+        // --- 1. GRANULAR: Extract Imports ---
+        // Simple regex to grab all import lines from the top of the file
+        // This ensures the AI knows your types even if we hide other code.
+        const importLines = fullText.match(/^import .*?;/gm) || [];
+        const importsText = importLines.join('\n');
 
-      // 4. Return the result as a ghost text item
-      return [
-        new vscode.InlineCompletionItem(
-          suggestion,
-          new vscode.Range(position, position)
-        )
-      ];
+        // --- 2. GRANULAR: Find Active Scope ---
+        try {
+            // Ask VS Code for the file structure (AST)
+            const symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                'vscode.executeDocumentSymbolProvider',
+                document.uri
+            );
+
+            const activeSymbol = symbols ? findDeepestSymbol(symbols, position) : undefined;
+
+            if (activeSymbol) {
+                // If we found a function/method, only send that!
+                // We grab the text strictly within that symbol's range
+                const symbolText = document.getText(activeSymbol.range);
+                
+                // Calculate where the cursor is RELATIVE to the start of this symbol
+                const symbolStartOffset = document.offsetAt(activeSymbol.range.start);
+                const relativeCursorOffset = offset - symbolStartOffset;
+
+                // Insert the cursor marker inside the symbol text
+                const textWithCursor = 
+                    symbolText.substring(0, relativeCursorOffset) + 
+                    CURSOR_MARKER + 
+                    symbolText.substring(relativeCursorOffset);
+
+                console.log(`[AI] Focused on symbol: ${activeSymbol.name}`);
+                
+                // Combine: Imports + The specific function we are working on
+                promptContext = `${importsText}\n\n// ... (irrelevant code hidden) ...\n\n${textWithCursor}`;
+            
+            } else {
+                // Fallback: If we are in global scope (not in a function), use the Sliding Window approach
+                // (You can reuse the sliding window logic here as a backup)
+                const start = Math.max(0, offset - 1000);
+                const end = Math.min(fullText.length, offset + 1000);
+                const slice = fullText.substring(start, end);
+                promptContext = slice.substring(0, offset - start) + CURSOR_MARKER + slice.substring(offset - start);
+            }
+
+        } catch (err) {
+            console.error("Error getting symbols:", err);
+            // Fallback to simple text if symbol provider fails
+            promptContext = fullText; 
+        }
+
+        // --- 3. Formatting ---
+        const combinedContext = `${FILE_SEPARATOR}${document.uri.fsPath} ---\n${promptContext}`;
+
+        // --- 4. Send Request ---
+        const suggestion = await getAISuggestion(combinedContext, prefix);
+
+        if (!suggestion) return [];
+
+        return [
+            new vscode.InlineCompletionItem(
+                suggestion,
+                new vscode.Range(position, position)
+            )
+        ];
     }
   };
 
