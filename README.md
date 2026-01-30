@@ -4,6 +4,10 @@ the extention to set your own ai server for ghost completion.
 use combination of keys "ALT" + "." to send request to get suggestion.
 
 
+this model doing well:
+dagbs/qwen2.5-coder-7b-instruct-abliterated:q4_k_l
+
+
 
 --------------
 extention code available by link https://github.com/IGajduk/code-suggestions
