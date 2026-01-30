@@ -9,7 +9,7 @@ dagbs/qwen2.5-coder-7b-instruct-abliterated:q4_k_l
 
 
 example of usage model: "dagbs/qwen2.5-coder-7b-instruct-abliterated:q4_k_l" on your nodejs express server you can find in 'server-file.ts'
-
+request send to the <server-url>/complete
 
 
 --------------
