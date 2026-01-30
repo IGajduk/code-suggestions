@@ -8,6 +8,9 @@ this model doing well:
 dagbs/qwen2.5-coder-7b-instruct-abliterated:q4_k_l
 
 
+example of usage model: "dagbs/qwen2.5-coder-7b-instruct-abliterated:q4_k_l" on your nodejs express server you can find in 'server-file.ts'
+
+
 
 --------------
 extention code available by link https://github.com/IGajduk/code-suggestions
